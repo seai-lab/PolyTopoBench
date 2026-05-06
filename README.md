@@ -14,7 +14,7 @@ The installer creates one conda environment named `polytopobench`. See `ENVIRONM
 
 ## Data
 
-Data is distributed separately. After downloading the data package, place or extract it under `dataset/` with this layout:
+Data is distributed separately at `https://huggingface.co/datasets/NeurIPS2026EDTrack/PolyTopoBench`. After downloading the data package, place or extract it under `dataset/` with this layout:
 
 ```text
 dataset/data_processed/
