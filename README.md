@@ -14,15 +14,19 @@ The installer creates one conda environment named `polytopobench`. See `ENVIRONM
 
 ## Data
 
-Data is distributed separately at `https://huggingface.co/datasets/NeurIPS2026EDTrack/PolyTopoBench`. After downloading the data package, place or extract it under `dataset/` with this layout:
+Data is distributed separately at `https://huggingface.co/datasets/NeurIPS2026EDTrack/PolyTopoBench`.
 
-```text
-dataset/data_processed/
-  inria_building/
-  deventer_512_valtest_as_val/
+Download the raw data from Hugging Face into `dataset/`:
+
+```bash
+pip install -U huggingface_hub
+hf download NeurIPS2026EDTrack/PolyTopoBench \
+  --repo-type dataset \
+  --local-dir dataset \
+  --include "inria_dataset_aligned/**" "deventer_512_valtest_as_val/**"
 ```
 
-Raw source data used by `prepare_data.py` should be placed under:
+This creates:
 
 ```text
 dataset/
@@ -30,18 +34,34 @@ dataset/
   deventer_512_valtest_as_val/
 ```
 
+Then prepare the baseline-ready processed data:
+
+```bash
+python prepare_data.py --overwrite
+```
+
+The processed data is written to:
+
+```text
+dataset/data_processed/
+  inria_building/
+  deventer_512_valtest_as_val/
+```
+
 For a custom processed data location, pass `--data-processed-root`.
+
+To download only the reviewer sample data:
+
+```bash
+hf download NeurIPS2026EDTrack/PolyTopoBench \
+  --repo-type dataset \
+  --local-dir dataset_sample \
+  --include "SampleData/**"
+```
 
 Core Croissant metadata files are provided under `metadata/`.
 
-The prepared `dataset/data_processed/` folders can be used directly. To rebuild the processed folders from raw data for the baselines that do not require ACPV-Net latents, run:
-
-```bash
-python prepare_data.py \
-  --overwrite
-```
-
-To include ACPV-Net when rebuilding data, pass `--methods all --encode-acpv-latents --acpv-autoencoder-config <path>`. By default, prepared data is written to `dataset/data_processed/`. The Deventer tasks are `road`, `vegetation`, and `unvegetated`.
+Prepared `dataset/data_processed/` folders can be used directly if supplied. To include ACPV-Net when rebuilding data, pass `--methods all --encode-acpv-latents --acpv-autoencoder-config <path>`. The Deventer tasks are `road`, `vegetation`, and `unvegetated`.
 
 ## Quick Check
 
