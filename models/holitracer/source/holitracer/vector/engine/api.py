@@ -1,0 +1,303 @@
+import cv2
+import os
+import torch
+import numpy as np
+from tqdm import tqdm
+from .utils import (
+    prepare_image,
+    group_points_func,
+    restore_group_points,
+    interpolate_polygon_by_distance,
+    compute_polygon_angles,
+)
+
+
+def vector_predict_api(
+    model,
+    image_path,
+    polys,
+    d=25,
+    num_points=32,
+    down_ratio=4,
+    corner_threshold=0.1,
+    device="cuda",
+):
+    # Load image
+    image = cv2.imread(image_path)
+    if image is None:
+        return []
+    refined_annotations = []
+
+    # Process each prediction
+    for poly_num, polygon in enumerate(
+        tqdm(polys, desc="Processing vectorization", total=len(polys))
+    ):
+        if polygon is None:
+            # print("The segmentation is None.")
+            continue
+
+        # filter small polygons
+        if polygon.area < 100:
+            continue
+
+        # Need to consider converting to multiple polygons
+        if polygon.geom_type == "MultiPolygon":
+            polygons = list(polygon.geoms)
+        else:
+            polygons = [polygon]
+
+        for poly_num, polygon in enumerate(polygons):
+
+            if polygon is None:
+                # print("The polygon is None.")
+                continue
+
+            # dp simplification
+            simple_polygon = polygon.simplify(5.0, preserve_topology=True)
+
+            if simple_polygon is None:
+                # print("The simple polygon is None.")
+                continue
+            try:
+                refactored_polygon = interpolate_polygon_by_distance(
+                    simple_polygon, d=d
+                )
+            except Exception as e:
+                # print(e)
+                continue
+            refactored_polygon_arrays = []
+            if refactored_polygon.geom_type == "MultiPolygon":
+                refactored_polygon = list(refactored_polygon.geoms)[0]
+            exterior_refactored_polygon_list = refactored_polygon.exterior.coords
+            refactored_polygon_array = np.array(exterior_refactored_polygon_list)[:-1]
+            refactored_polygon_arrays.append(refactored_polygon_array)
+
+            interior_refactored_polygon_lists = refactored_polygon.interiors
+            if interior_refactored_polygon_lists:
+                for interior_refactored_line in interior_refactored_polygon_lists:
+                    interior_refactored_polygon_list = interior_refactored_line.coords
+                    interior_refactored_polygon_array = np.array(
+                        interior_refactored_polygon_list
+                    )[:-1]
+                    refactored_polygon_arrays.append(interior_refactored_polygon_array)
+
+                simple_points_list = []
+                exterior_simple_polygon_list = simple_polygon.exterior.coords
+                exterior_simple_polygon_array = np.array(
+                    exterior_simple_polygon_list
+                ).copy()[:-1]
+                exterior_simple_points = exterior_simple_polygon_array.reshape(-1, 2)
+                simple_points_list.append(exterior_simple_points)
+
+                interior_simple_polygon_lists = simple_polygon.interiors
+                if interior_simple_polygon_lists:
+                    for interior_simple_line in interior_simple_polygon_lists:
+                        interior_simple_polygon_list = interior_simple_line.coords
+                        interior_simple_polygon_array = np.array(
+                            interior_simple_polygon_list
+                        ).copy()[:-1]
+                        interior_simple_points = interior_simple_polygon_array.reshape(
+                            -1, 2
+                        )
+                        simple_points_list.append(interior_simple_points)
+
+                refactored_points_list = []
+                for refactored_polygon_array in refactored_polygon_arrays:
+                    refactored_points = refactored_polygon_array.reshape(-1, 2)
+                    refactored_points_list.append(refactored_points)
+
+            refined_points_list = []
+            refined_corner_list = []
+            angle_list = []
+            corner_list = []
+
+            exterior_flag = False  # To mark if exterior polygon exists
+            for i, refactored_polygon_array in enumerate(refactored_polygon_arrays):
+                # Convert polygon points to numpy array
+                # Flatten all points into one array
+                segmentation_points = refactored_polygon_array.reshape(-1, 2)
+
+                if segmentation_points.shape[0] < 3:
+                    # print("The number of all points is less than 3.")
+                    continue
+
+                # Group segmentation points by num_points
+                point_groups, valid_counts = group_points_func(
+                    segmentation_points, num_points
+                )
+
+                # Collect all refined points for merging
+                refined_all_groups = []
+                corner_all_groups = []
+
+                for group_idx, (group_points, valid_count) in enumerate(
+                    zip(point_groups, valid_counts)
+                ):
+                    # Calculate bounding box with overlap
+                    x_min = max(int(np.min(group_points[:valid_count, 0])) - 50, 0)
+                    x_max = min(
+                        int(np.max(group_points[:valid_count, 0])) + 50,
+                        image.shape[1],
+                    )
+                    y_min = max(int(np.min(group_points[:valid_count, 1])) - 50, 0)
+                    y_max = min(
+                        int(np.max(group_points[:valid_count, 1])) + 50,
+                        image.shape[0],
+                    )
+
+                    # Crop image
+                    image_crop = image[y_min:y_max, x_min:x_max, :]
+
+                    # Adjust segmentation point coordinates to cropped image coordinate system
+                    adjusted_points = group_points.copy()
+                    adjusted_points[:valid_count, 0] -= x_min
+                    adjusted_points[:valid_count, 1] -= y_min
+
+                    # Prepare model input
+                    # Convert image to tensor and normalize
+                    image_tensor = prepare_image(image_crop, device)
+
+                    # Prepare segmentation points tensor
+                    pred_points_tensor = (
+                        torch.from_numpy(adjusted_points).unsqueeze(0).float()
+                    )
+
+                    # Prepare valid_mask tensor
+                    valid_mask = torch.zeros((1, num_points), dtype=torch.float32).to(
+                        device
+                    )
+                    valid_mask[0, :valid_count] = 1.0
+
+                    # resize pred_points_tensor
+                    pred_points_tensor = (
+                        pred_points_tensor
+                        * torch.tensor([512, 512]).float()
+                        / torch.tensor([x_max - x_min, y_max - y_min]).float()
+                        / torch.tensor(down_ratio).float()
+                    )
+                    pred_points_tensor = pred_points_tensor.to(device)
+
+                    try:
+                        # Run model
+                        refined_points, is_corner_logits = model(
+                            image_tensor, pred_points_tensor, valid_mask
+                        )
+
+                        refined_points = refined_points.cpu().detach().numpy()[0]
+                        is_corner_probs = (
+                            torch.sigmoid(is_corner_logits).cpu().detach().numpy()[0]
+                        )
+
+                        # Keep only valid corner points
+                        refined_points = refined_points[:valid_count, :]
+                        is_corner_probs = is_corner_probs[:valid_count]
+
+                        # Handle points out of image boundaries
+                        refined_points[:, 0] = np.clip(refined_points[:, 0], 0, 512)
+                        refined_points[:, 1] = np.clip(refined_points[:, 1], 0, 512)
+
+                        # Adjust refined points back to original image coordinate system
+                        refined_points[:, 0] *= (x_max - x_min) / 512
+                        refined_points[:, 1] *= (y_max - y_min) / 512
+
+                        refined_points[:, 0] += x_min
+                        refined_points[:, 1] += y_min
+
+                        # Collect refined points
+                        refined_all_groups.append(refined_points)
+                        corner_all_groups.append(is_corner_probs)
+
+                    except Exception as e:
+                        print(e)
+                        continue
+
+                # Merge all groups of refined points
+                if refined_all_groups:
+                    merged_refined_points, merged_corners, num_merged_points = (
+                        restore_group_points(
+                            refined_all_groups,
+                            corner_all_groups,
+                            num_points,
+                        )
+                    )
+                    angles = compute_polygon_angles(merged_refined_points)
+
+                    # # Select corner points
+                    is_corner_mask = merged_corners > corner_threshold
+                    #
+                    # # Keep only corner points
+                    refined_corner_points = merged_refined_points[
+                        is_corner_mask, :
+                    ].copy()
+                    # refined_corner_points = merged_refined_points.copy()
+                    #
+                    # Keep points with angle less than 135 degrees
+                    # angles_mask = angles < (165 / 180 * math.pi)
+                    # merged_refined_points = merged_refined_points[angles_mask, :]
+
+                    if merged_refined_points.shape[0] < 3:
+                        # print("The number of all merged points is less than 3.")
+                        continue
+
+                    refined_points_list.append(merged_refined_points.copy())
+                    refined_corner_list.append(refined_corner_points)
+                    angle_list.append(angles)
+                    corner_list.append(merged_corners)
+
+                    if i == 0:
+                        exterior_flag = True
+
+            # If exterior polygon does not exist, skip
+            if not exterior_flag:
+                # print("The merged geom exterior polygon does not exist.")
+                continue
+
+            # Calculate bbox
+            x_min = np.min(merged_refined_points[:, 0])
+            x_max = np.max(merged_refined_points[:, 0])
+            y_min = np.min(merged_refined_points[:, 1])
+            y_max = np.max(merged_refined_points[:, 1])
+            bbox_coco = [x_min, y_min, x_max - x_min, y_max - y_min]
+            bbox_coco = [round(float(x), 2) for x in bbox_coco]
+
+            # Convert merged polygon to COCO format segmentation
+            refined_segmentation = []
+            outer_flag = False
+            for i, refined_points in enumerate(refined_corner_list):
+                segmentation = refined_points.flatten().tolist()
+                # Ensure polygon has at least 3 points
+                if len(segmentation) < 6:
+                    # print("The number of all merged points is less than 3.")
+                    continue
+                refined_segmentation.append(segmentation)
+                if i == 0:
+                    outer_flag = True
+
+            if not outer_flag:
+                # print("The merged coco exterior polygon does not exist.")
+                continue
+
+            area = polygon.area
+
+            merged_result = {
+                "id": poly_num,
+                "image_id": 0,
+                "category_id": 1,
+                "segmentation": refined_segmentation,
+                "bbox": bbox_coco,
+                "score": max(0.9, min(area / (512 * 512), 0.99)),
+            }
+            refined_annotations.append(merged_result)
+
+    images_info = {
+        "file_name": os.path.basename(image_path),
+        "height": image.shape[0],
+        "width": image.shape[1],
+        "id": 0,
+    }
+    coco_output = {
+        "images": [images_info],
+        "annotations": refined_annotations,
+        "categories": [{"id": 1, "name": ""}],
+    }
+    return coco_output

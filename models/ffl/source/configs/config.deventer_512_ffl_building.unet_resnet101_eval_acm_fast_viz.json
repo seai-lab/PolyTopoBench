@@ -1,0 +1,52 @@
+{
+  "defaults_filepath": "configs/config.defaults.deventer_512_ffl_building.json",
+  "run_name": "deventer_512_ffl_building.unet_resnet101",
+  "num_workers": 8,
+  "backbone_params": {
+    "defaults_filepath": "configs/backbone_params.unet_resnet101.json",
+    "pretrained": false
+  },
+  "eval_params": {
+    "defaults_filepath": "configs/eval_params.defaults.json",
+    "patch_size": null,
+    "batch_size_mult": 1,
+    "results_dirname": "../../../output/ffl/deventer_512_valtest_as_val",
+    "save_individual_outputs": {
+      "poly_geojson": true,
+      "poly_viz": true
+    },
+    "save_aggregated_outputs": {
+      "stats": true,
+      "poly_coco": true
+    }
+  },
+  "optim_params": {
+    "batch_size": 1
+  },
+  "polygonize_params": {
+    "method": [
+      "acm"
+    ],
+    "common_params": {
+      "init_data_level": 0.5
+    },
+    "acm_method": {
+      "steps": 20,
+      "data_level": 0.5,
+      "data_coef": 0.1,
+      "length_coef": 0.4,
+      "crossfield_coef": 0.5,
+      "poly_lr": 0.01,
+      "warmup_iters": 20,
+      "warmup_factor": 0.1,
+      "device": "cuda",
+      "init_contour_simplify_tolerance": 1.0,
+      "init_contour_min_vertices": 8,
+      "init_contour_min_length": 16,
+      "init_contour_min_area": 20,
+      "tolerance": 2,
+      "seg_threshold": 0.5,
+      "min_area": 20
+    }
+  }
+}

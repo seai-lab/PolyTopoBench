@@ -1,0 +1,20 @@
+{
+  "defaults_filepath": "configs/config.defaults.json",
+  "data_dir_candidates": [
+    "../../../../data_processed"
+  ],
+  "num_workers": 4,
+  "data_aug_params": {
+    "enable": false,
+    "device": "cuda"
+  },
+  "dataset_params": {
+    "defaults_filepath": "configs/dataset_params.inria_building_polygonized.json"
+  },
+  "eval_params": {
+    "defaults_filepath": "configs/eval_params.inria_building_polygonized.json"
+  },
+  "optim_params": {
+    "gamma": 0.99
+  }
+}

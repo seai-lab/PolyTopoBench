@@ -1,0 +1,21 @@
+{
+  "defaults_filepath": "configs/config.defaults.json",
+  "data_dir_candidates": [
+    "../../../data_processed/deventer_512_valtest_as_val",
+    "../../../../data_processed/deventer_512_valtest_as_val"
+  ],
+  "num_workers": 4,
+  "data_aug_params": {
+    "enable": false,
+    "device": "cuda"
+  },
+  "dataset_params": {
+    "defaults_filepath": "configs/dataset_params.deventer_512_ffl_building.json"
+  },
+  "eval_params": {
+    "defaults_filepath": "configs/eval_params.defaults.json"
+  },
+  "optim_params": {
+    "gamma": 0.99
+  }
+}

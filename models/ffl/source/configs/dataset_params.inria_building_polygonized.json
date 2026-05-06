@@ -1,0 +1,14 @@
+{
+  "root_dirname": "inria_building",
+  "pre_process": true,
+  "gt_source": "disk",
+  "gt_type": "geojson",
+  "gt_dirname": "gt_polygonized",
+  "mask_only": false,
+  "small": false,
+  "data_patch_size": 725,
+  "input_patch_size": 512,
+  "train_fraction": 0.75,
+  "process_only_filtered_tiles": true,
+  "split_csv": "train/image_split_by_city_80_20.csv"
+}

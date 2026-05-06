@@ -1,0 +1,15 @@
+{
+  "dataset_adapter": "deventer_ffl",
+  "root_dirname": "ffl/building",
+  "pre_process": true,
+  "gt_source": "disk",
+  "gt_type": "geojson",
+  "gt_dirname": "gt_polygonized",
+  "mask_only": false,
+  "small": false,
+  "data_patch_size": 512,
+  "input_patch_size": 512,
+  "train_fraction": 0.75,
+  "process_only_filtered_tiles": true,
+  "split_csv": "train/image_split_official_train_val.csv"
+}

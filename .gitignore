@@ -1,0 +1,40 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Native extension build artifacts
+build/
+dist/
+*.egg-info/
+*.so
+*.o
+
+# Local runtime outputs
+/output/
+/outputs/
+/output_smoke_polytopobench/
+/temp_smoke/
+/models/temp_smoke/
+/runs/
+/wandb/
+**/wandb/
+**/lightning_logs/
+
+# Data is distributed separately.
+/dataset/
+
+# Logs
+*.log
+*.out
+*.err
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

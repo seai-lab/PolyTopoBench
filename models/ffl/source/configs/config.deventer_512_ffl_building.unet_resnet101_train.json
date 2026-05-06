@@ -1,0 +1,16 @@
+{
+  "defaults_filepath": "configs/config.defaults.deventer_512_ffl_building.json",
+  "run_name": "deventer_512_ffl_building.unet_resnet101",
+  "num_workers": 8,
+  "backbone_params": {
+    "defaults_filepath": "configs/backbone_params.unet_resnet101.json",
+    "pretrained": false
+  },
+  "optim_params": {
+    "batch_size": 13,
+    "max_epoch": 5,
+    "gamma": 0.99,
+    "checkpoint_epoch": 5,
+    "checkpoints_to_keep": 10
+  }
+}

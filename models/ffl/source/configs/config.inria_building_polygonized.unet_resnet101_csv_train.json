@@ -1,0 +1,16 @@
+{
+  "defaults_filepath": "configs/config.defaults.inria_building_polygonized.json",
+  "run_name": "inria_building_polygonized.unet_resnet101_csv",
+  "num_workers": 16,
+  "backbone_params": {
+    "defaults_filepath": "configs/backbone_params.unet_resnet101.json",
+    "pretrained": false
+  },
+  "optim_params": {
+    "batch_size": 13,
+    "max_epoch": 5,
+    "gamma": 0.99,
+    "checkpoint_epoch": 5,
+    "checkpoints_to_keep": 10
+  }
+}

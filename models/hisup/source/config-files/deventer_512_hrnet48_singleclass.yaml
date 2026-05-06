@@ -1,0 +1,41 @@
+SOLVER:
+  IMS_PER_BATCH: 8
+  BASE_LR: 1e-4
+  MAX_EPOCH: 100
+  STEPS: (25,)
+  WEIGHT_DECAY: 0.0001
+  CHECKPOINT_PERIOD: 10
+  OPTIMIZER: "ADAM"
+  AMSGRAD: True
+
+DATALOADER:
+  NUM_WORKERS: 16
+
+DATASETS:
+  IMAGE:
+    PIXEL_MEAN: [109.54834, 114.86825, 102.69644]
+    PIXEL_STD: [52.80287, 48.31333, 46.67280]
+    TO_255: True
+    HEIGHT: 512
+    WIDTH: 512
+  TARGET:
+    HEIGHT: 128
+    WIDTH: 128
+  ORIGIN:
+    HEIGHT: 512
+    WIDTH: 512
+  TRAIN: ("custom_hisup_train",)
+  TEST: ("custom_hisup_val",)
+
+MODEL:
+  NAME: "HRNet48v2"
+  HEAD_SIZE: [[2]]
+  OUT_FEATURE_CHANNELS: 256
+  LOSS_WEIGHTS:
+    loss_joff: 0.25
+    loss_jloc: 8.0
+    loss_mask: 1.0
+    loss_afm : 0.1
+    loss_remask : 1.0
+
+OUTPUT_DIR: "./output/hisup/deventer_512_valtest_as_val/road"

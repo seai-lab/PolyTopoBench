@@ -1,0 +1,14 @@
+{
+  "defaults_filepath": "configs/eval_params.defaults.json",
+  "test_time_augmentation": false,
+  "batch_size_mult": 1,
+  "patch_size": 1024,
+  "patch_overlap": 200,
+  "save_individual_outputs": {
+    "poly_geojson": true
+  },
+  "save_aggregated_outputs": {
+    "stats": true,
+    "poly_coco": true
+  }
+}
