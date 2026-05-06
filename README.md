@@ -32,6 +32,8 @@ dataset/
 
 For a custom processed data location, pass `--data-processed-root`.
 
+Core Croissant metadata files are provided under `metadata/`.
+
 The prepared `dataset/data_processed/` folders can be used directly. To rebuild the processed folders from raw data for the baselines that do not require ACPV-Net latents, run:
 
 ```bash
