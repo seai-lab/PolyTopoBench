@@ -1,13 +1,17 @@
 import argparse
 import yaml
 from holitracer.seg.engine import InferImageEngine
-import setproctitle
+try:  # optional: only sets the process title
+    import setproctitle
+except ImportError:
+    setproctitle = None
 import torch.distributed as dist
 import torch
 
 import os
 
-setproctitle.setproctitle("python seg_infer.py")
+if setproctitle is not None:
+    setproctitle.setproctitle("python seg_infer.py")
 
 
 def parse_args():

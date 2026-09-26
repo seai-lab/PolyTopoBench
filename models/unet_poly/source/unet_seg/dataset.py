@@ -3,7 +3,7 @@
 
 Reads `(image, merged binary mask)` pairs from:
     <mirror>/<split>/images/*.{tif,png}
-    <mirror>/<split>/masks/<stem>.png   (produced by utils/build_unet_seg_dataset.py)
+    <mirror>/<split>/masks/<stem>.png   (produced by prepare_data.py)
 """
 from __future__ import annotations
 

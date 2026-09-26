@@ -121,6 +121,27 @@ def main() -> None:
         int(img["id"]): (int(img["height"]), int(img["width"])) for img in coco["images"]
     }
 
+    # Guard against bbox priors from another dataset/task/split: image ids are contiguous
+    # from 1 in every mirror, so a wrong --bbox-json would otherwise be silently accepted.
+    mismatched = [
+        b for b in filtered
+        if "file_name" in b and image_id_to_filename.get(int(b["image_id"])) != b["file_name"]
+    ]
+    if mismatched:
+        b = mismatched[0]
+        raise RuntimeError(
+            f"{len(mismatched)} bbox record(s) in {args.bbox_json} do not match {ann_json_path}: "
+            f"image_id={b['image_id']} is '{b['file_name']}' in the bbox JSON but "
+            f"'{image_id_to_filename.get(int(b['image_id']))}' in the val split. "
+            "Use Mask R-CNN predictions from the same dataset/task."
+        )
+    unknown_ids = sorted(set(by_image) - set(image_id_to_filename))
+    if unknown_ids:
+        raise RuntimeError(
+            f"{len(unknown_ids)} image_id(s) in {args.bbox_json} are not in {ann_json_path} "
+            f"(e.g. {unknown_ids[:5]}). Use Mask R-CNN predictions from the same dataset/task."
+        )
+
     predictor = _build_sam2_predictor(args)
 
     records: list[dict] = []
@@ -135,16 +156,16 @@ def main() -> None:
         for image_id in tqdm(sorted_image_ids, desc=f"sam2_seg infer [{args.mirror_root.name}]"):
             if image_id not in image_id_to_filename:
                 continue
-            fn = image_id_to_filename[image_id]
-            img_path = val_dir / "images" / fn
-            image = _load_image_rgb(img_path)
-            predictor.set_image(image)
-
             these_bboxes = by_image.get(image_id, [])
             if not these_bboxes:
                 continue
             if args.max_images and processed_images >= args.max_images:
                 break
+
+            fn = image_id_to_filename[image_id]
+            img_path = val_dir / "images" / fn
+            image = _load_image_rgb(img_path)
+            predictor.set_image(image)
 
             boxes_xyxy = np.asarray([b["bbox_xyxy"] for b in these_bboxes], dtype=np.float32)
             scores_det = np.asarray([b["score"] for b in these_bboxes], dtype=np.float32)

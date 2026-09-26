@@ -1,3 +1,5 @@
+import os
+
 from .registry import MODELS
 from .hrnet32v2 import HighResolutionNet as HRNet32v2
 from .multi_task_head import MultitaskHead
@@ -15,6 +17,9 @@ def build_hrnet32(cfg):
 
     pretrained = 'topomapper/backbones/hrnet_imagenet/hrnetv2_w32_imagenet_pretrained.pth'
     model.init_weights(pretrained=pretrained)
+    if not os.path.isfile(pretrained):
+        print('WARNING: ImageNet weights {} not found (cwd {}); the HRNet backbone is randomly '
+              'initialised.'.format(pretrained, os.getcwd()))
     print('INFO:build hrnet-w32-v2 backbone')
     return model
 

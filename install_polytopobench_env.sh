@@ -14,6 +14,31 @@ if ! command -v "$CONDA_EXE" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Detectron2 and the in-tree CUDA extensions are compiled against
+# torch 2.4.0+cu121, which requires a CUDA 12.x nvcc. Honour CUDA_HOME /
+# CUDA_PATH, otherwise use the nvcc on PATH (same lookup order as torch).
+CUDA_HOME="${CUDA_HOME:-${CUDA_PATH:-}}"
+if [[ -z "$CUDA_HOME" ]]; then
+  if command -v nvcc >/dev/null 2>&1; then
+    CUDA_HOME="$(dirname "$(dirname "$(command -v nvcc)")")"
+  else
+    CUDA_HOME=/usr/local/cuda
+  fi
+fi
+if [[ ! -x "$CUDA_HOME/bin/nvcc" ]]; then
+  echo "nvcc was not found at $CUDA_HOME/bin/nvcc. Set CUDA_HOME to a CUDA 12.x toolkit (see ENVIRONMENT.md)." >&2
+  exit 1
+fi
+CUDA_TOOLKIT_VERSION="$("$CUDA_HOME/bin/nvcc" --version | sed -n 's/.*release \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+if [[ "${CUDA_TOOLKIT_VERSION%%.*}" != "12" ]]; then
+  echo "Found nvcc ${CUDA_TOOLKIT_VERSION:-unknown} at $CUDA_HOME/bin/nvcc, but torch 2.4.0+cu121 needs a CUDA 12.x nvcc." >&2
+  echo "Set CUDA_HOME to a CUDA 12.x toolkit (see ENVIRONMENT.md)." >&2
+  exit 1
+fi
+export CUDA_HOME
+export PATH="$CUDA_HOME/bin:$PATH"
+echo "Using CUDA $CUDA_TOOLKIT_VERSION toolkit at $CUDA_HOME"
+
 if [[ "${RESET_POLYTOPOBENCH_ENV:-0}" == "1" ]]; then
   "$CONDA_EXE" env remove -n "$ENV_NAME" -y || true
 fi
@@ -22,8 +47,20 @@ if ! "$CONDA_EXE" env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
   "$CONDA_EXE" create -y -n "$ENV_NAME" "python=$PYTHON_VERSION" pip
 fi
 
+# Call the env's interpreter by absolute path. `conda run -n ENV python` picks
+# the first `python` on PATH, which can belong to another env or venv when the
+# calling shell has one prepended to PATH; pip would then modify that env.
+ENV_PREFIX="$("$CONDA_EXE" run -n "$ENV_NAME" printenv CONDA_PREFIX)"
+ENV_PY="$ENV_PREFIX/bin/python"
+if [[ ! -x "$ENV_PY" ]]; then
+  echo "Could not locate the python interpreter of conda env '$ENV_NAME' (got '$ENV_PY')." >&2
+  exit 1
+fi
+export PATH="$ENV_PREFIX/bin:$PATH"
+export PYTHONNOUSERSITE=1
+
 run_py() {
-  "$CONDA_EXE" run --no-capture-output -n "$ENV_NAME" python "$@"
+  "$CONDA_EXE" run --no-capture-output -n "$ENV_NAME" "$ENV_PY" "$@"
 }
 
 run_pip() {
@@ -37,7 +74,7 @@ build_ext_inplace() {
     TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST" \
     FORCE_CUDA="$FORCE_CUDA" \
     MAX_JOBS="$MAX_JOBS" \
-    "$CONDA_EXE" run --no-capture-output -n "$ENV_NAME" python setup.py build_ext --inplace
+    run_py setup.py build_ext --inplace
   )
 }
 
@@ -80,6 +117,8 @@ run_pip install --no-build-isolation --no-deps \
   -e "$ROOT/models/holitracer/source" \
   -e "$ROOT/models/gcp/source"
 
-run_py "$ROOT/smoke_test.py" --method unet_poly --skip-imports
+# Import check only: the dry-run in smoke_test.py needs dataset/data_processed,
+# which is usually downloaded after the environment is installed.
+(cd "$ROOT" && run_py -c "import smoke_test; smoke_test.check_imports()")
 
 echo "polytopobench environment is ready: $ENV_NAME"

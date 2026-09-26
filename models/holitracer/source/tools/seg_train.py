@@ -1,12 +1,16 @@
 import argparse
 import yaml
 from holitracer.seg.engine import TrainEngine
-import setproctitle
+try:  # optional: only sets the process title
+    import setproctitle
+except ImportError:
+    setproctitle = None
 import torch.distributed as dist
 import torch
 import os
 
-setproctitle.setproctitle("python seg_train.py")
+if setproctitle is not None:
+    setproctitle.setproctitle("python seg_train.py")
 
 
 def parse_args():

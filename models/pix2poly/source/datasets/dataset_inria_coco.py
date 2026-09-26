@@ -21,16 +21,15 @@ class InriaCocoDataset(Dataset):
         self.coco = COCO(self.annotations_path)
         # Use COCO-assigned image ids so we never look up an id that is not in
         # the annotation (e.g. when images/ contains extra files for a smoke
-        # split). Filter out test-set tiles (kitsap4/5) the original code
-        # skipped. Keep only ids whose images exist on disk.
+        # split). Keep only ids whose images exist on disk. The original
+        # Pix2Poly code skipped kitsap4/kitsap5 tiles (held out in its own
+        # split); PolyTopoBench trains every model on the full shared train
+        # split, so no tiles are filtered here.
         all_ids = self.coco.getImgIds()
         ids = []
         for img_id in all_ids:
             info = self.coco.loadImgs(img_id)[0]
             name = info.get('file_name', '')
-            prefix = name.split('-')[0] if '-' in name else ''
-            if prefix in ('kitsap4', 'kitsap5'):
-                continue
             if not osp.isfile(osp.join(self.image_dir, name)):
                 continue
             ids.append(img_id)

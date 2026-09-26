@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 
 INRIA_DATASET = "inria_building"
 DEVENTER_DATASET = "deventer_512_valtest_as_val"
+# Environment variables that runners append to rather than treat as settings.
+PASSTHROUGH_ENV = {"PYTHONPATH"}
 
 
 @dataclass
@@ -74,10 +78,16 @@ class RunContext:
         return self.data_dir("hisup") / "val" / "annotation.json"
 
     def param(self, name: str, default: str | int | float | bool) -> str:
+        # --set KEY=VALUE wins; otherwise only POLYTOPOBENCH_<KEY> is read from the environment,
+        # so a generic shell variable such as NUM_WORKERS cannot silently change a run.
         if name in self.params:
             return self.params[name]
-        if name in os.environ:
-            return os.environ[name]
+        if name in PASSTHROUGH_ENV:
+            return os.environ.get(name, str(default))
+        prefixed = f"POLYTOPOBENCH_{name}"
+        if prefixed in os.environ:
+            print(f"[{self.method}] {name}={os.environ[prefixed]} (from {prefixed})", flush=True)
+            return os.environ[prefixed]
         if isinstance(default, bool):
             return "1" if default else "0"
         return str(default)
@@ -98,6 +108,11 @@ class RunContext:
     def conda(self, env_name: str, argv: list[str]) -> list[str]:
         if self.no_conda:
             return argv
+        # Call the env's own executable: `conda run` keeps PATH entries that precede the
+        # previously active env, so a bare `python` can resolve to another environment.
+        prefix = conda_env_prefix(env_name)
+        if prefix is not None and (prefix / "bin" / argv[0]).is_file():
+            argv = [str(prefix / "bin" / argv[0]), *argv[1:]]
         return ["conda", "run", "--no-capture-output", "-n", env_name, *argv]
 
     def python(self, env_name: str, script: Path, args: list[str], cwd: Path) -> list[str]:
@@ -142,6 +157,18 @@ def parse_key_values(items: list[str]) -> dict[str, str]:
             raise ValueError(f"--set has an empty key: {item}")
         parsed[key] = value
     return parsed
+
+
+@lru_cache(maxsize=None)
+def conda_env_prefix(env_name: str) -> Path | None:
+    try:
+        result = subprocess.run(["conda", "env", "list", "--json"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    for prefix in json.loads(result.stdout).get("envs", []):
+        if Path(prefix).name == env_name:
+            return Path(prefix)
+    return None
 
 
 def find_data_processed_root(release_root: Path, override: str | None) -> Path:

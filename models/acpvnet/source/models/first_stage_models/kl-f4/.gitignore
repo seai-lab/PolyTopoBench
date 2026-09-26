@@ -1,0 +1,5 @@
+# LDM kl-f4 first-stage autoencoder weights (not redistributed). Download with:
+#   curl -L -o kl-f4.zip https://ommer-lab.com/files/latent-diffusion/kl-f4.zip && unzip kl-f4.zip
+# so that this directory contains model.ckpt (md5 6b572cd4898bbd99769ccfc6977cba32).
+*
+!.gitignore

@@ -3,7 +3,7 @@
 
 Outputs:
 - `<output-dir>/predictions.json`                  (HiSup-format polygon records)
-- `<output-dir>/bbox_predictions_for_sam2.json`    (list of {image_id, bbox_xyxy, score})
+- `<output-dir>/bbox_predictions_for_sam2.json`    (list of {image_id, file_name, bbox_xyxy, score})
 """
 from __future__ import annotations
 
@@ -93,6 +93,8 @@ def main() -> None:
                     box = boxes[j].tolist()
                     bbox_records.append({
                         "image_id": image_id,
+                        # lets sam2 verify the image_id refers to the same val patch
+                        "file_name": batch["file_name"][i],
                         "bbox_xyxy": [float(v) for v in box],
                         "score": score,
                     })

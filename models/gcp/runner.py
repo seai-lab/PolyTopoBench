@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from utilis.common import CommandStep, RunContext, require_paths
 
 
@@ -9,6 +11,22 @@ DEFAULT_ENV = "polytopobench"
 def _ann_name(ctx: RunContext, data_root) -> str:
     smoke_ann = data_root / "train" / "annotation-smoke.json"
     return "annotation-smoke.json" if ctx.smoke and smoke_ann.exists() else "annotation.json"
+
+
+def _stage2_checkpoint(ctx: RunContext, stage2_dir: Path, stage2_epochs: str) -> Path:
+    """Checkpoint for val inference.
+
+    GCP_CHECKPOINT wins. In train_eval the checkpoint is the one this run is about to
+    write (epoch_<STAGE2_EPOCHS>.pth); for mode=infer/eval mmengine's last_checkpoint
+    pointer of an earlier training run is used when present.
+    """
+    override = ctx.param("GCP_CHECKPOINT", "")
+    if override:
+        return Path(override).expanduser().resolve()
+    pointer = stage2_dir / "last_checkpoint"
+    if ctx.mode != "train_eval" and pointer.is_file() and pointer.read_text(encoding="utf-8").strip():
+        return Path(pointer.read_text(encoding="utf-8").strip())
+    return stage2_dir / f"epoch_{stage2_epochs}.pth"
 
 
 def build_commands(ctx: RunContext) -> list[CommandStep]:
@@ -108,4 +126,49 @@ def build_commands(ctx: RunContext) -> list[CommandStep]:
                 "--cfg-options", *stage2_opts,
             ], cwd),
         ))
+    if ctx.run_val and ctx.mode in {"infer", "eval", "train_eval"}:
+        # Val inference with GCP's own test loop; CocoMetric(format_only) dumps
+        # <prefix>.segm.json whose `polygon` field is [exterior, hole1, ...].
+        infer_dir = output_dir / "val_inference"
+        raw_prefix = infer_dir / "raw" / "gcp_val"
+        pred_path = infer_dir / "predictions_hisup.json"
+        # Unified evaluation always scores against the canonical hisup GT (smoke runs:
+        # its annotation-smoke.json subset, same image ids as the smoke test set).
+        gt_path = ctx.data_dir("hisup") / "val" / ann_name
+        require_paths([gt_path])
+        ckpt = _stage2_checkpoint(ctx, stage2_dir, stage2_epochs)
+        test_opts = [
+            f"test_dataloader.dataset.data_root={ctx.path(data_root, cwd)}",
+            f"test_dataloader.dataset.ann_file=val/{ann_name}",
+            "test_dataloader.dataset.data_prefix.img=val/images",
+            f"test_dataloader.num_workers={ctx.param('TEST_NUM_WORKERS', ctx.param('STAGE2_NUM_WORKERS', 8))}",
+            f"test_evaluator.0.ann_file={ctx.path(gt_path, cwd)}",
+            "test_evaluator.0.format_only=True",
+            f"test_evaluator.0.outfile_prefix={raw_prefix}",
+            "test_evaluator.0.calculate_mta=False",
+            "test_evaluator.0.calculate_iou_ciou=False",
+            f"model.panoptic_head.type={ctx.param('STAGE2_HEAD_TYPE', 'PolygonizerHead')}",
+            f"model.test_mode={ctx.param('STAGE2_TEST_MODE', 'normal')}",
+        ]
+        steps.append(CommandStep(
+            "gcp_val_infer",
+            cwd=cwd,
+            env=common_env,
+            argv=ctx.python(env_name, source / "tools" / "test.py", [
+                ctx.path(stage2_cfg, cwd),
+                ctx.path(ckpt, cwd),
+                "--work-dir", ctx.path(infer_dir / "work_dir", cwd),
+                "--cfg-options", *test_opts,
+            ], cwd),
+        ))
+        steps.append(CommandStep(
+            "gcp_to_hisup",
+            cwd=ctx.release_root,
+            argv=ctx.python(env_name, ctx.model_root() / "convert_gcp_to_hisup.py", [
+                "--input", ctx.path(Path(f"{raw_prefix}.segm.json"), ctx.release_root),
+                "--gt", ctx.path(gt_path, ctx.release_root),
+                "--output", ctx.path(pred_path, ctx.release_root),
+            ], ctx.release_root),
+        ))
+        steps.append(ctx.evaluate_step(name="gcp_eval", pred=pred_path, gt=gt_path, env_name=env_name, pred_type="hisup"))
     return steps

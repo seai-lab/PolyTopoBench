@@ -1,3 +1,5 @@
+import os
+
 from .registry import MODELS
 from .hrnet48v2 import HighResolutionNet as HRNet48v2
 from .hrnet32v2 import HighResolutionNet as HRNet32v2
@@ -13,6 +15,9 @@ def build_hrnet48(cfg):
                       num_class = num_class)
     pretrained = 'hisup/backbones/hrnet_imagenet/hrnetv2_w48_imagenet_pretrained.pth'
     model.init_weights(pretrained=pretrained)
+    if not os.path.isfile(pretrained):
+        print('WARNING: ImageNet weights {} not found (cwd {}); the HRNet backbone is randomly '
+              'initialised.'.format(pretrained, os.getcwd()))
     print('INFO:build hrnet-w48-v2 backbone')
     return model
 

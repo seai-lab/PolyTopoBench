@@ -38,6 +38,7 @@ def setup_cfg(args):
     cfg.PRED_CATEGORY_ID = args.category_id
     cfg.MAX_IMAGES = args.max_images
     cfg.TEST_BATCH_SIZE = args.batch_size
+    cfg.PRED_JSON = args.pred_json
     cfg.freeze()
     return cfg
 
@@ -56,6 +57,7 @@ def get_parser():
     parser.add_argument("--category-id", type=int, default=100, help="Category id written to prediction JSON")
     parser.add_argument("--max-images", type=int, default=0, help="Stop after this many images. 0 means evaluate all images.")
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size used by the test dataloader.")
+    parser.add_argument("--pred-json", default="", help="Exact prediction JSON path. Defaults to <output>/predictions_<iter>.json.")
     parser.add_argument("--test-json", "--train-json", dest="test_json", help="Path to the COCO-format annotation file")
     parser.add_argument("--test-path", "--train-path", dest="test_path", help="Path to the images directory")
     parser.add_argument("--opts", default=[], nargs=argparse.REMAINDER, help="Modify config options using the command-line 'KEY VALUE' pairs")
@@ -180,7 +182,8 @@ def prediction(cfg):
     print("Average model speed: ", np.mean(speed), " [s / image]")
 
     # Save predictions to a JSON file
-    output_path = os.path.join(cfg.OUTPUT_DIRPATH, f"predictions_{int(cfg.ITER)}.json")
+    output_path = cfg.PRED_JSON or os.path.join(cfg.OUTPUT_DIRPATH, f"predictions_{int(cfg.ITER)}.json")
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     with open(output_path, "w") as fp:
         json.dump(predictions, fp)
 

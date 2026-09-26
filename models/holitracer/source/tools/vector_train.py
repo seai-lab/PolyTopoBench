@@ -1,12 +1,16 @@
 import os
 import yaml
 import argparse
-import setproctitle
+try:  # optional: only sets the process title
+    import setproctitle
+except ImportError:
+    setproctitle = None
 import torch.distributed as dist
 import torch
 from holitracer.vector.engine import TrainEngine
 
-setproctitle.setproctitle("python vector_train.py")
+if setproctitle is not None:
+    setproctitle.setproctitle("python vector_train.py")
 
 
 def parse_args():

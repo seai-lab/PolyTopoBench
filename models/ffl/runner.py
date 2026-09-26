@@ -109,7 +109,9 @@ def prepare(ctx: RunContext) -> None:
     eval_cfg.setdefault("optim_params", {})
     eval_cfg["optim_params"]["batch_size"] = int(ctx.param("EVAL_BATCH_SIZE", 2))
     eval_cfg.setdefault("eval_params", {})
-    eval_cfg["eval_params"]["results_dirname"] = ctx.path(ctx.output_dir() / "results", source)
+    # FFL resolves a relative results_dirname against the *dataset* root, not the cwd,
+    # so it must be absolute to land in the run's output dir.
+    eval_cfg["eval_params"]["results_dirname"] = str((ctx.output_dir() / "results").resolve())
     eval_cfg.setdefault("polygonize_params", {}).setdefault("acm_method", {})
     eval_cfg["polygonize_params"]["acm_method"]["steps"] = int(ctx.param("POLY_STEPS", 20))
     eval_cfg["polygonize_params"]["acm_method"]["poly_lr"] = float(ctx.param("POLY_LR", 0.01))
@@ -167,4 +169,39 @@ def build_commands(ctx: RunContext) -> list[CommandStep]:
                 "--eval_batch_size", ctx.param("EVAL_BATCH_SIZE", 2),
             ], cwd),
         ))
+        # FFL writes per-crop polygons (holes only in the geojson files); map them onto
+        # the canonical hisup patches and score them with the unified evaluator.
+        rel = ctx.release_root
+        infer_dir = ctx.output_dir() / "val_inference"
+        pred_path = infer_dir / "predictions_hisup.json"
+        gt_path = ctx.hisup_gt_json()
+        convert_args = [
+            "--results-dir", ctx.path(ctx.output_dir() / "results", rel),
+            "--run-name", ctx.run_name,
+            "--fold", "val",
+            "--gt", ctx.path(gt_path, rel),
+            "--output", ctx.path(pred_path, rel),
+            "--summary", ctx.path(infer_dir / "conversion_summary.json", rel),
+        ]
+        if ctx.is_inria:
+            convert_args += ["--data-patch-size", "725", "--input-patch-size", "512"]
+        else:
+            convert_args += [
+                "--data-patch-size", "512", "--input-patch-size", "512",
+                "--split-csv", ctx.path(data_root / "train" / "image_split_official_train_val.csv", rel),
+            ]
+        eval_gt = gt_path
+        if ctx.smoke:
+            # Smoke runs predict only SMOKE_VAL_TILES tiles; score them against the
+            # canonical GT restricted to those tiles (same image ids).
+            eval_gt = infer_dir / "gt_smoke_subset.json"
+            convert_args += ["--subset-gt-output", ctx.path(eval_gt, rel)]
+        else:
+            convert_args += ["--require-all-tiles"]
+        steps.append(CommandStep(
+            "ffl_to_hisup",
+            cwd=rel,
+            argv=ctx.python(env_name, ctx.model_root() / "convert_ffl_to_hisup.py", convert_args, rel),
+        ))
+        steps.append(ctx.evaluate_step(name="ffl_unified_eval", pred=pred_path, gt=eval_gt, env_name=env_name, pred_type="hisup"))
     return steps

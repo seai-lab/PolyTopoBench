@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -52,35 +53,35 @@ EXECUTE_SPECS = {
         "set": ["MAX_INFER_IMAGES=1", "SCORE_THRESHOLD=0.0"],
     },
     "hisup": {
-        "mode": "train",
-        "set": ["NUM_WORKERS=0", "IMS_PER_BATCH=1", "MAX_TRAIN_STEPS=2", "MAX_EPOCH=1", "TARGET_SIZE=128"],
+        "mode": "train_eval",
+        "set": ["NUM_WORKERS=0", "IMS_PER_BATCH=1", "MAX_TRAIN_STEPS=2", "MAX_EPOCH=1", "TARGET_SIZE=128", "EVAL_NUM_WORKERS=4"],
     },
     "acpvnet": {
-        "mode": "train",
-        "set": ["NUM_WORKERS=0", "IMS_PER_BATCH=2", "TOTAL_ITERS=2", "CHECKPOINT_PERIOD=1"],
+        "mode": "train_eval",
+        "set": ["NUM_WORKERS=0", "IMS_PER_BATCH=2", "TOTAL_ITERS=2", "CHECKPOINT_PERIOD=1", "EVAL_NUM_WORKERS=4", "POLYGONIZE_NUM_WORKERS=2"],
     },
     "ffl": {
-        "mode": "train",
+        "mode": "train_eval",
         "set": ["NUM_WORKERS=1", "TRAIN_BATCH_SIZE=1", "MAX_EPOCH=1", "SMOKE_TRAIN_TILES=1", "SMOKE_VAL_TILES=1"],
     },
     "gcp": {
-        "mode": "train",
+        "mode": "train_eval",
         "set": ["STAGE1_NUM_WORKERS=0", "STAGE2_NUM_WORKERS=0", "STAGE1_BATCH_SIZE=1", "STAGE2_BATCH_SIZE=1", "STAGE1_EPOCHS=1", "STAGE2_EPOCHS=1", "CKPT_INTERVAL=1"],
     },
     "holitracer": {
-        "mode": "train",
-        "set": ["PIPELINE_STAGE=seg_h5", "MAX_H5_IMAGES=2", "VIEW_SIZE=512"],
+        "mode": "train_eval",
+        "set": ["MAX_H5_IMAGES=2", "VIEW_SIZE=512", "SEG_NUM_WORKERS=2", "SEG_INFER_NUM_WORKERS=2", "VECTOR_NUM_WORKERS=2"],
     },
     "pix2poly": {
-        "mode": "train",
+        "mode": "train_eval",
         "set": ["PIX2POLY_BATCH_SIZE=1", "PIX2POLY_NUM_EPOCHS=1", "PIX2POLY_NUM_WORKERS=0", "PIX2POLY_DEBUG_MAX_TRAIN_STEPS=2", "PIX2POLY_DEBUG_MAX_VAL_STEPS=1", "PIX2POLY_PRETRAINED_ENCODER=0"],
     },
     "polyworld": {
-        "mode": "train",
+        "mode": "train_eval",
         "set": ["NUM_WORKERS=0", "BATCH_SIZE=2", "EPOCHS=1", "MAX_TRAIN_STEPS_PER_EPOCH=2", "MAX_VAL_BATCHES=1", "TRAIN_IMAGE_LIMIT=8", "VAL_IMAGE_LIMIT=4"],
     },
     "roipoly": {
-        "mode": "train",
+        "mode": "train_eval",
         "set": ["NUM_WORKERS=0", "IMS_PER_BATCH=2", "MAX_ITER=2", "CHECKPOINT_PERIOD=1"],
     },
 }
@@ -157,6 +158,23 @@ def run_main(release_root: Path, args: argparse.Namespace, method: str, execute:
             raise SystemExit("sam2_poly execute needs --bbox-json or an existing Mask R-CNN smoke bbox JSON.")
         cmd += ["--bbox-json", str(bbox_json)]
     subprocess.run(cmd, cwd=release_root, check=True)
+    if execute:
+        check_unified_metrics(release_root, args, method, task)
+
+
+def check_unified_metrics(release_root: Path, args: argparse.Namespace, method: str, task: str) -> None:
+    output_root = args.output_root if args.output_root.is_absolute() else release_root / args.output_root
+    run_dir = output_root / method / args.dataset / task / f"{method}_{task}_smoke"
+    for path in sorted(run_dir.rglob("metrics.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue  # e.g. detectron2's own line-delimited training log
+        if isinstance(payload, dict) and "ground_truth" in payload and "metrics" in payload:
+            ap50 = payload["metrics"].get("poly_ap", {}).get("AP50")
+            print(f"Unified metrics: {path} (AP50={ap50})", flush=True)
+            return
+    raise SystemExit(f"{method}: no unified-evaluator metrics.json under {run_dir}")
 
 
 def main() -> None:

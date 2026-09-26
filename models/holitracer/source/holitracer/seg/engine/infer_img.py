@@ -460,6 +460,11 @@ class InferImageEngine(BaseEngine):
                 image0 = np.zeros((height, width, bands), dtype=np.uint8)
                 for band in range(bands):
                     image0[:, :, band] = dataset.GetRasterBand(band + 1).ReadAsArray()
+                # GDAL returns RGB band order, but training (make_seg_h5) and the non-GDAL
+                # path read images with cv2 (BGR) and normalize_function_mm converts
+                # BGR->RGB; feed BGR here too so both paths see identical inputs.
+                if bands == 3:
+                    image0 = np.ascontiguousarray(image0[:, :, ::-1])
 
                 # Get geotransform and projection
                 geotransform = dataset.GetGeoTransform()
@@ -588,6 +593,11 @@ class InferImageEngine(BaseEngine):
                 image0 = np.zeros((height, width, bands), dtype=np.uint8)
                 for band in range(bands):
                     image0[:, :, band] = dataset.GetRasterBand(band + 1).ReadAsArray()
+                # GDAL returns RGB band order, but training (make_seg_h5) and the non-GDAL
+                # path read images with cv2 (BGR) and normalize_function_mm converts
+                # BGR->RGB; feed BGR here too so both paths see identical inputs.
+                if bands == 3:
+                    image0 = np.ascontiguousarray(image0[:, :, ::-1])
 
                 # Get geotransform and projection
                 geotransform = dataset.GetGeoTransform()

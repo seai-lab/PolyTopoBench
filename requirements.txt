@@ -1,5 +1,5 @@
-# Core Python packages for the unified polybench environment.
-# Install with install_polybench_env.sh so Torch, mmcv, torch-scatter,
+# Core Python packages for the unified polytopobench environment.
+# Install with install_polytopobench_env.sh so Torch, mmcv, torch-scatter,
 # Detectron2, editable packages, and CUDA extensions are installed in
 # the correct order.
 numpy==1.26.4

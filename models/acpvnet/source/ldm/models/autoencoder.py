@@ -1,13 +1,54 @@
 import sys
 
 import torch
-import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 from einops import rearrange, repeat
 from torchvision.utils import make_grid
 
-from taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
+# PolyTopoBench only uses AutoencoderKL for latent encode/decode (no Lightning training loop,
+# no VQ model), so pytorch_lightning / taming-transformers are optional here.
+try:
+    import pytorch_lightning as pl
+except ModuleNotFoundError:
+    class _LightningFallback:
+        __version__ = "0.0.0"
+        LightningModule = torch.nn.Module
+    pl = _LightningFallback()
+
+try:
+    from taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
+except ModuleNotFoundError:
+    VectorQuantizer = None  # only needed by VQModel
+
+
+def _torch_load_checkpoint(path):
+    """torch.load that tolerates Lightning objects (e.g. callbacks) pickled next to the weights."""
+    try:
+        return torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:  # torch without `weights_only`
+        return torch.load(path, map_location="cpu")
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").split(".")[0] not in {"pytorch_lightning", "lightning"}:
+            raise
+    import pickle
+    import types
+
+    class _Stub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __setstate__(self, state):
+            pass
+
+    class _Unpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module.split(".")[0] in {"pytorch_lightning", "lightning"}:
+                return _Stub
+            return super().find_class(module, name)
+
+    shim = types.SimpleNamespace(Unpickler=_Unpickler, load=pickle.load, __name__="pickle")
+    return torch.load(path, map_location="cpu", pickle_module=shim, weights_only=False)
 
 from ldm.modules.diffusionmodules.model import Encoder, Decoder
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
@@ -342,10 +383,7 @@ class AutoencoderKL(pl.LightningModule):
         # sd = torch.load(path, map_location="cpu")["state_dict"]
 
         # Newer PyTorch versions accept `weights_only`; older ones do not.
-        try:
-            sd_raw = torch.load(path, map_location="cpu", weights_only=False)
-        except TypeError:
-            sd_raw = torch.load(path, map_location="cpu")
+        sd_raw = _torch_load_checkpoint(path)
         # Standard PL checkpoints store weights under the "state_dict" key.
         sd = sd_raw["state_dict"] if isinstance(sd_raw, dict) and "state_dict" in sd_raw else sd_raw
 

@@ -28,6 +28,10 @@ class DatasetCatalog(object):
                 'img_dir': os.path.join(custom_root, split, 'images'),
                 'ann_file': os.path.join(custom_root, split, 'annotation.json'),
             }
+            # Optional evaluation subset (e.g. val/annotation-smoke.json); same image ids.
+            eval_ann = os.environ.get("HISUP_EVAL_ANN_FILE")
+            if eval_ann and split != "train":
+                attrs['ann_file'] = osp.abspath(eval_ann)
         elif name in DatasetCatalog.DATASETS:
             attrs = DatasetCatalog.DATASETS[name]
         else:

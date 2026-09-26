@@ -53,13 +53,27 @@ def build_commands(ctx: RunContext) -> list[CommandStep]:
             argv=ctx.conda(env_name, ["torchrun", "--standalone", "--nproc_per_node=1", "train_ddp.py"]),
         ))
     if ctx.run_val and ctx.mode in {"infer", "eval", "train_eval"}:
-        args = ["-d", common_env["PIX2POLY_DATASET"], "-e", ctx.path(output_dir, cwd), "-c", "best_valid_metric", "-o", "val_best_valid_metric"]
+        checkpoint = ctx.param("PIX2POLY_CHECKPOINT", "best_valid_metric")
+        pred_json = output_dir / f"predictions_val_{checkpoint}.json"
+        # Predict on the canonical hisup val split so image ids always match the evaluator GT,
+        # independent of how the pix2poly mirror names/numbers its images.
+        canonical_val = ctx.hisup_gt_json().parent
+        require_paths([canonical_val / "annotation.json", canonical_val / "images"])
+        args = [
+            "-d", common_env["PIX2POLY_DATASET"],
+            "-e", ctx.path(output_dir, cwd),
+            "-c", checkpoint,
+            "-o", f"val_{checkpoint}",
+            "--pred-output-json", ctx.path(pred_json, cwd),
+        ]
         if common_env["PIX2POLY_PRED_MAX_BATCHES"] != "0":
             args += ["--max-batches", common_env["PIX2POLY_PRED_MAX_BATCHES"]]
         steps.append(CommandStep(
             "pix2poly_predict",
             cwd=cwd,
-            env=common_env,
+            env={**common_env, "PIX2POLY_VAL_DATASET_DIR": ctx.path(canonical_val, cwd)},
             argv=ctx.python(env_name, source / "predict_inria_coco_val_set.py", args, cwd),
         ))
+        # Pix2Poly emits one record per closed ring; rebuild exterior/hole hierarchy by containment.
+        steps.append(ctx.evaluate_step(name="pix2poly_eval", pred=pred_json, env_name=env_name, cwd=cwd, pred_type="roipoly"))
     return steps

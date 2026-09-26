@@ -18,8 +18,15 @@ def build_commands(ctx: RunContext) -> list[CommandStep]:
     max_epoch = ctx.param("MAX_EPOCH", 1 if ctx.smoke else 100)
     checkpoint_period = ctx.param("CHECKPOINT_PERIOD", 1 if ctx.smoke else 10)
     num_workers = ctx.param("NUM_WORKERS", 8)
+    # Smoke runs evaluate on the 16-image val/annotation-smoke.json subset (same image ids as the
+    # canonical GT); full runs always use the complete canonical val/annotation.json.
+    eval_ann = data_root / "val" / "annotation.json"
+    smoke_ann = data_root / "val" / "annotation-smoke.json"
+    if ctx.smoke and ctx.param("SMOKE_EVAL_SUBSET", 1) != "0" and smoke_ann.is_file():
+        eval_ann = smoke_ann
     cwd = source
     common_env = ctx.env(
+        HISUP_EVAL_ANN_FILE=ctx.path(eval_ann, cwd),
         PYTHONPATH=f"{ctx.path(source, cwd)}:{ctx.param('PYTHONPATH', '')}",
         HISUP_DATA_ROOT=ctx.path(data_root, cwd),
         POLYTOPOBENCH_DATA_PROCESSED_ROOT=ctx.path(ctx.data_processed_root, cwd),
@@ -51,7 +58,7 @@ def build_commands(ctx: RunContext) -> list[CommandStep]:
             env=common_env,
             argv=ctx.python(env_name, source / "scripts" / "train.py", train_opts, cwd),
         ))
-    if ctx.run_val and ctx.mode in {"eval", "train_eval"}:
+    if ctx.run_val and ctx.mode in {"infer", "eval", "train_eval"}:
         steps.append(CommandStep(
             "hisup_eval",
             cwd=cwd,
@@ -69,5 +76,15 @@ def build_commands(ctx: RunContext) -> list[CommandStep]:
                 "DATASETS.TARGET.WIDTH", ctx.param("TARGET_SIZE", 128),
                 "DATALOADER.NUM_WORKERS", num_workers,
             ], cwd),
+        ))
+        # test.py writes <OUTPUT_DIR>/custom_hisup_val.json with segmentation=[exterior, hole1, ...]
+        # and image ids read from the canonical annotation file -> unified evaluator, pred-type hisup.
+        steps.append(ctx.evaluate_step(
+            name="hisup_unified_eval",
+            pred=output_dir / "custom_hisup_val.json",
+            gt=eval_ann,
+            env_name=env_name,
+            pred_type="hisup",
+            gt_type="hisup",
         ))
     return steps

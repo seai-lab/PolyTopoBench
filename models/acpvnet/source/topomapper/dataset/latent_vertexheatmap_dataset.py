@@ -107,6 +107,16 @@ class LatentVertexHeatmapTestDataset(Dataset):
         self.root = os.path.join(data_dir, split)
         self.image_dir = os.path.join(self.root, "images")
         self.image_list = sorted(os.listdir(self.image_dir))
+        # Optional evaluation subset (e.g. val/annotation-smoke.json): keep only its images.
+        eval_ann = os.environ.get("ACPV_EVAL_ANN_FILE")
+        if eval_ann:
+            import json
+            with open(eval_ann, "r", encoding="utf-8") as handle:
+                keep = {os.path.basename(image["file_name"]) for image in json.load(handle)["images"]}
+            self.image_list = [name for name in self.image_list if name in keep]
+            if len(self.image_list) != len(keep):
+                raise FileNotFoundError(
+                    f"{len(keep) - len(self.image_list)} images of {eval_ann} are missing from {self.image_dir}")
         if max_images is not None and int(max_images) > 0:
             self.image_list = self.image_list[: int(max_images)]
         self.transform = transform
