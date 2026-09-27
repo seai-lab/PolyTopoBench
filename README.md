@@ -1,135 +1,114 @@
-# PolyTopoBench
+# PolyTopoBench: A Benchmark for Complex Vector Polygon Generation from Remote Sensing Imagery
 
-This repository provides a unified runner for 11 polygon decoding baselines.
+[![NeurIPS 2026](https://img.shields.io/badge/NeurIPS%202026-Evaluations%20%26%20Datasets-blue)](https://neurips.cc/Conferences/2026)
+[![Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-PolyTopoBench-yellow)](https://huggingface.co/datasets/PingL/PolyTopoBench)
+
+Zeping Liu, Ni Lao, Weiwei Sun, Gil Wolff, Yiqun Xie, Liang Zhao, Junfeng Jiao, Gengchen Mai
+
+<p align="center"><img src="assets/framework.png" width="100%"></p>
+
+PolyTopoBench evaluates whether polygon generation models recover the full topology of vector polygons, including **interior rings (holes)**, rather than exterior boundaries only. It provides four single-class tasks on 512 × 512 aerial patches (Inria building; Deventer road, vegetation, unvegetated) with nearly 300K polygon instances and over 42K interior rings. It also provides 11 baselines under one runner and a unified evaluator that reports region (AP), vector-boundary (BIoU, POLIS, MTA) and ring-structure (Hole-F1, Topo-EM) metrics.
 
 ## Installation
 
 ```bash
-cd PolyTopoBench
-RESET_POLYTOPOBENCH_ENV=1 bash install_polytopobench_env.sh
+git clone https://github.com/seai-lab/PolyTopoBench.git && cd PolyTopoBench
+RESET_POLYTOPOBENCH_ENV=1 bash install_polytopobench_env.sh   # creates the conda env "polytopobench"
 conda activate polytopobench
 ```
 
-The installer creates one conda environment named `polytopobench` for all baselines. It needs a CUDA 12.x `nvcc`; see `ENVIRONMENT.md` for how to point it to one with `CUDA_HOME`.
+The installer builds Detectron2 and several CUDA extensions and needs a CUDA 12.x `nvcc`; see [ENVIRONMENT.md](ENVIRONMENT.md). The evaluator alone only needs `numpy`, `scipy`, `shapely` and `tqdm`.
 
 ## Data
 
-The dataset is hosted at https://huggingface.co/datasets/PingL/PolyTopoBench. Download it into `dataset/`:
+Download the dataset from [Hugging Face](https://huggingface.co/datasets/PingL/PolyTopoBench) into `dataset/`:
 
 ```bash
-pip install -U huggingface_hub
-# Benchmark data: 512x512 patches and annotations for all four tasks (~13 GB)
 hf download PingL/PolyTopoBench --repo-type dataset --local-dir dataset \
-  --include "tasks.json" "inria/*" "deventer/*"
-# Optional: full Inria tiles, needed only for Frame Field Learning on Inria (~13 GB)
-hf download PingL/PolyTopoBench --repo-type dataset --local-dir dataset --include "raw/inria/*"
+  --include "tasks.json" "inria/*" "deventer/*"                           # ~13 GB
+hf download PingL/PolyTopoBench --repo-type dataset --local-dir dataset \
+  --include "raw/inria/*"                                                 # optional, FFL on Inria only
 ```
 
-This creates:
-
-```text
-dataset/
-  tasks.json                  # task registry with file paths and checksums
-  inria/
-    images/{train,val}/<city>/*.tif
-    building/{train,val}.json # COCO layout; segmentation = [exterior, hole_1, ...]
-    building/{train,val}.parquet
-  deventer/
-    images/{train,val}/*.png
-    {road,vegetation,unvegetated}/{train,val}.{json,parquet}
-  raw/inria/                  # optional
-```
-
-See the [dataset card](https://huggingface.co/datasets/PingL/PolyTopoBench) for the annotation format. Note that `segmentation` lists the exterior ring followed by its holes, which differs from standard COCO.
-
-### Preparing data for the baselines
-
-Each baseline reads its own input format. `prepare_data.py` derives these from the downloaded release and writes them to `dataset/data_processed/`:
+Annotations are COCO-style JSON (plus GeoParquet) in which `segmentation = [exterior, hole_1, hole_2, ...]`; see the [dataset card](https://huggingface.co/datasets/PingL/PolyTopoBench) for details. To run the baselines, convert the release into each baseline's input format (about 15 minutes, 30 GB):
 
 ```bash
 python prepare_data.py                          # all baselines except ACPV-Net
-python prepare_data.py --methods hisup roipoly  # only the baselines you need
+python prepare_data.py --methods hisup roipoly  # or only the ones you need
 ```
 
-The canonical ground truth used by the evaluator (`dataset/data_processed/<dataset>/hisup/...`) is always prepared. Mirrors that already exist are skipped, so you can add baselines later; pass `--overwrite` to rebuild them. Preparing everything takes about 15 minutes and 30 GB of disk (images are hard-linked where possible). FFL on Inria is skipped with a message if `raw/inria/` was not downloaded.
+## Evaluate Your Method
 
-ACPV-Net additionally needs latent heatmaps encoded on the GPU: pass `--methods acpvnet --encode-acpv-latents --acpv-autoencoder-config <path>`.
-
-Use `--data-root` and `--output-root` to read the release from, or write the prepared data to, another location; then pass the same output location to `main.py` and `smoke_test.py` with `--data-processed-root`. You do not need `prepare_data.py` to evaluate your own method; see below.
-
-## Evaluating Your Own Method
-
-Train on `dataset/<dataset>/images/train` with the matching `train.json`, predict on the validation images, and write one JSON list per task:
+Write your validation predictions as a JSON list, one record per polygon, with `image_id` taken from the task's `val.json`:
 
 ```json
-[{"image_id": 1, "segmentation": [[x1, y1, x2, y2, ...], [hole ring], ...], "score": 0.93}, ...]
+[{"image_id": 1, "segmentation": [[x1, y1, x2, y2, ...], [hole ring], ...], "score": 0.93}]
 ```
 
-`image_id` must be the id from the task's `val.json`. Each record is one polygon: the first ring is its exterior and every further ring is a hole, in pixel coordinates of the 512x512 patch. Then run the unified evaluator:
+Then score them with the unified evaluator:
 
 ```bash
-python utilis/evaluate_vector_polygons.py \
-  --pred predictions.json \
-  --gt dataset/inria/building/val.json \
-  --gt-type hisup --pred-type hisup \
-  --min-hole-area 16 --num-workers 16 \
-  --output metrics.json
+python utilis/evaluate_vector_polygons.py --pred predictions.json --gt dataset/inria/building/val.json \
+  --gt-type hisup --pred-type hisup --min-hole-area 16 --output metrics.json
 ```
 
-If your method outputs one record per ring instead of one per polygon, use `--pred-type roipoly`; holes are then assigned to exteriors by containment.
+Use `--pred-type roipoly` if your method outputs one record per ring; holes are then assigned by containment.
 
-## Quick Check
+## Baselines
 
-After preparing the data:
+| Method | `--method` | Type | Ring mode | Original code |
+|---|---|---|---|---|
+| U-Net + Poly. | `unet_poly` | Seg. | Imp. | [smp](https://github.com/qubvel-org/segmentation_models.pytorch) |
+| Mask R-CNN + Poly. | `maskrcnn_poly` | Seg. | Imp. | [torchvision](https://github.com/pytorch/vision) |
+| SAM2 + Poly. | `sam2_poly` | FM | Imp. | [SAM 2](https://github.com/facebookresearch/sam2) |
+| HiSup | `hisup` | Rep. | Imp. | [SarahwXU/HiSup](https://github.com/SarahwXU/HiSup) |
+| ACPV-Net | `acpvnet` | Rep. | Exp. | [HeinzJiao/ACPV-Net](https://github.com/HeinzJiao/ACPV-Net) |
+| FFL | `ffl` | Rep. | Exp. | [Lydorn/Polygonization-by-Frame-Field-Learning](https://github.com/Lydorn/Polygonization-by-Frame-Field-Learning) |
+| GCP | `gcp` | Rep. | Exp. | [zhu-xlab/GCP](https://github.com/zhu-xlab/GCP) |
+| HoliTracer | `holitracer` | Rep. | Imp. | [vvangfaye/HoliTracer](https://github.com/vvangfaye/HoliTracer) |
+| Pix2Poly | `pix2poly` | Direct | Imp. | [yeshwanth95/Pix2Poly](https://github.com/yeshwanth95/Pix2Poly) |
+| PolyWorld | `polyworld` | Direct | Imp. | [zorzi-s/PolyWorldPretrainedNetwork](https://github.com/zorzi-s/PolyWorldPretrainedNetwork) |
+| RoIPoly | `roipoly` | Direct | Imp. | [HeinzJiao/RoIPoly](https://github.com/HeinzJiao/RoIPoly) |
 
-```bash
-python smoke_test.py                                   # dependency imports + dry-run of every baseline
-python smoke_test.py --execute --method unet_poly      # real short run on Inria
-python smoke_test.py --execute --method hisup --dataset deventer_512_valtest_as_val
-```
+*Seg.*: segmentation then polygonization; *FM*: foundation-model-assisted polygonization; *Rep.*: learned representation to vector; *Direct*: direct vector decoding. *Exp.*/*Imp.*: holes are modeled explicitly or implicitly.
 
-With `--execute`, each baseline is trained for a few steps, run on a few validation images and scored with the unified evaluator. The check fails if no metrics file is produced. Run `maskrcnn_poly` before `sam2_poly`, which uses its boxes. Smoke outputs go to `output_smoke_polytopobench/`.
-
-## Running Baselines
-
-List available methods:
-
-```bash
-python main.py --list
-```
-
-Datasets are `inria_building` (task `building`) and `deventer_512_valtest_as_val` (tasks `road`, `vegetation`, `unvegetated`). Train and evaluate a baseline:
+Train and evaluate a baseline (datasets: `inria_building` with task `building`, `deventer_512_valtest_as_val` with tasks `road`, `vegetation` and `unvegetated`):
 
 ```bash
 python main.py --method hisup --dataset inria_building --task building --mode train_eval
-python main.py --method hisup --dataset deventer_512_valtest_as_val --task road --mode train_eval
+python main.py --method hisup --dataset deventer_512_valtest_as_val --task road --mode train_eval --smoke  # short run
+python smoke_test.py --execute --method hisup   # few-step train + inference + evaluation check
 ```
 
-Add `--smoke` for a short run. Other modes are `train`, `infer` and `eval`. To evaluate an existing run, pass its name:
+Outputs go to `output/<method>/<dataset>/<task>/<run-name>/`, and `train_eval` ends with the unified evaluator's `metrics.json` (under `val_inference/` for FFL, GCP and HoliTracer, and under `eval_sparsercnn_val/` for RoIPoly). Override settings with `--set KEY=VALUE`; use `--dry-run` to print the commands without running them.
 
-```bash
-python main.py --method unet_poly --dataset inria_building --task building --mode eval --run-name unet_poly_building_train_eval
-```
+<details>
+<summary>Baseline-specific notes</summary>
 
-Outputs are written to `output/<method>/<dataset>/<task>/<run-name>/`; use `--output-root` to change this. `train_eval` ends with the unified evaluator, which writes `metrics.json` to:
-
-| Method | Metrics file |
-|---|---|
-| `ffl`, `gcp`, `holitracer` | `<run-dir>/val_inference/metrics.json` |
-| `roipoly` | `<run-dir>/eval_sparsercnn_val/metrics.json` |
-| all others | `<run-dir>/metrics.json` |
-
-Use `--dry-run` to print the commands without running them. Method-specific settings are changed with `--set KEY=VALUE` (repeatable), or with an environment variable `POLYTOPOBENCH_<KEY>`. Plain environment variables such as `NUM_WORKERS` are ignored.
-
-### Baseline notes
-
-- **Pretrained weights** for U-Net (EfficientNet-B3), Mask R-CNN and SAM2 (`facebook/sam2-hiera-small`) are downloaded automatically on first use.
-- **SAM2** is not trained. It prompts SAM2 with Mask R-CNN boxes, so run `maskrcnn_poly` first, or pass `--bbox-json`.
-- **ACPV-Net** needs the LDM kl-f4 autoencoder to encode its training targets. Download it before running `prepare_data.py --methods acpvnet --encode-acpv-latents`:
+- **SAM2 + Poly.** prompts SAM2 with Mask R-CNN boxes, so run `maskrcnn_poly` first or pass `--bbox-json`.
+- **ACPV-Net** needs the LDM kl-f4 autoencoder to encode its training targets (about 20 minutes and 33 GB on Inria):
   ```bash
   curl -L -o kl-f4.zip https://ommer-lab.com/files/latent-diffusion/kl-f4.zip
   unzip kl-f4.zip -d models/acpvnet/source/models/first_stage_models/kl-f4
+  python prepare_data.py --methods acpvnet --encode-acpv-latents
   ```
-  Encoding runs on the GPU. It takes about 20 minutes and 33 GB for Inria.
-- **RoIPoly** needs box proposals. `train_eval` first trains its Sparse R-CNN detector unless `--set DETECTOR_WEIGHTS=<path>` is given.
-- **FFL** on Inria trains and predicts on the full 5000 × 5000 tiles from `raw/inria/`. Its predictions are mapped back to the 512 × 512 benchmark patches before evaluation.
+- **RoIPoly** first trains its Sparse R-CNN proposal detector unless `--set DETECTOR_WEIGHTS=<path>` is given.
+- **FFL** on Inria works on the full 5000 × 5000 tiles in `raw/inria/`; its predictions are mapped back to the 512 × 512 patches for evaluation.
+- Pretrained weights for U-Net, Mask R-CNN and SAM2 are downloaded automatically on first use.
+
+</details>
+
+## Citation
+
+```bibtex
+@inproceedings{liu2026polytopobench,
+  title     = {PolyTopoBench: A Benchmark for Complex Vector Polygon Generation from Remote Sensing Imagery},
+  author    = {Liu, Zeping and Lao, Ni and Sun, Weiwei and Wolff, Gil and Xie, Yiqun and Zhao, Liang and Jiao, Junfeng and Mai, Gengchen},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Evaluations and Datasets Track},
+  year      = {2026}
+}
+```
+
+## Acknowledgements
+
+The baselines under `models/*/source` are adapted from the repositories listed above and keep their original licenses. The data builds on the [Inria Aerial Image Labeling dataset](https://project.inria.fr/aerialimagelabeling/), [Deventer-512](https://huggingface.co/datasets/HeinzJiao/Deventer-512) and [OpenStreetMap](https://www.openstreetmap.org/copyright); see the [dataset card](https://huggingface.co/datasets/PingL/PolyTopoBench) for data licenses.
