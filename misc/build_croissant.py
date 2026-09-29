@@ -20,10 +20,10 @@ AUTHORS = [
     "Yiqun Xie", "Liang Zhao", "Junfeng Jiao", "Gengchen Mai",
 ]
 CITATION = (
-    "@inproceedings{liu2026polytopobench, title={PolyTopoBench: A Benchmark for Complex Vector Polygon "
-    "Generation from Remote Sensing Imagery}, author={Liu, Zeping and Lao, Ni and Sun, Weiwei and Wolff, Gil "
-    "and Xie, Yiqun and Zhao, Liang and Jiao, Junfeng and Mai, Gengchen}, booktitle={Advances in Neural "
-    "Information Processing Systems (NeurIPS), Evaluations and Datasets Track}, year={2026}}"
+    "@misc{liu2026polytopobenchbenchmarkcomplexvector, title={PolyTopoBench: A Benchmark for Complex Vector "
+    "Polygon Generation from Remote Sensing Imagery}, author={Zeping Liu and Ni Lao and Weiwei Sun and Gil Wolff "
+    "and Yiqun Xie and Liang Zhao and Junfeng Jiao and Gengchen Mai}, year={2026}, eprint={2609.32856}, "
+    "archivePrefix={arXiv}, primaryClass={cs.CV}, url={https://arxiv.org/abs/2609.32856}}"
 )
 RAI_KEYS = (
     "rai:dataLimitations", "rai:dataBiases", "rai:personalSensitiveInformation",
@@ -161,7 +161,7 @@ def build(release: Path, metadata_dir: Path, date: str) -> dict:
         ),
         "conformsTo": "http://mlcommons.org/croissant/1.1",
         "url": HF_URL,
-        "sameAs": "https://github.com/seai-lab/PolyTopoBench",
+        "sameAs": ["https://github.com/seai-lab/PolyTopoBench", "https://arxiv.org/abs/2609.32856"],
         "license": [
             "https://spdx.org/licenses/ODbL-1.0.html",
             "https://spdx.org/licenses/CC-BY-4.0.html",
