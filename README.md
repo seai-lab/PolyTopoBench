@@ -8,7 +8,7 @@ Zeping Liu<sup>1</sup>, Ni Lao<sup>1</sup>, Weiwei Sun<sup>2</sup>, Gil Wolff<su
 
 **NeurIPS 2026 (Evaluations and Datasets Track)**
 
-[![Paper](https://img.shields.io/badge/Paper-coming%20soon-lightgrey)](#)
+[![arXiv](https://img.shields.io/badge/arXiv-2609.32856-b31b1b)](https://arxiv.org/abs/2609.32856)
 [![Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset-yellow)](https://huggingface.co/datasets/PingL/PolyTopoBench)
 [![Python](https://img.shields.io/badge/Python-3.10-blue)](ENVIRONMENT.md)
 
@@ -146,11 +146,14 @@ Deventer tasks are `road`, `vegetation` and `unvegetated`. Outputs go to `output
 If you find PolyTopoBench useful, please cite:
 
 ```bibtex
-@inproceedings{liu2026polytopobench,
-  title     = {PolyTopoBench: A Benchmark for Complex Vector Polygon Generation from Remote Sensing Imagery},
-  author    = {Liu, Zeping and Lao, Ni and Sun, Weiwei and Wolff, Gil and Xie, Yiqun and Zhao, Liang and Jiao, Junfeng and Mai, Gengchen},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Evaluations and Datasets Track},
-  year      = {2026}
+@misc{liu2026polytopobenchbenchmarkcomplexvector,
+      title={PolyTopoBench: A Benchmark for Complex Vector Polygon Generation from Remote Sensing Imagery},
+      author={Zeping Liu and Ni Lao and Weiwei Sun and Gil Wolff and Yiqun Xie and Liang Zhao and Junfeng Jiao and Gengchen Mai},
+      year={2026},
+      eprint={2609.32856},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2609.32856},
 }
 ```
 
